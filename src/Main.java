@@ -152,7 +152,7 @@ public class Main {
             if (!isStrong(pw)) { pause("Password too weak."); return; }   // CWE-521
 
             byte[] salt = new byte[16];
-            RNG.nextBytes(salt);                                          // CWE-759: unique salt per user
+            RNG.nextBytes(salt);                                          // CWE-916: unique random salt per user (defeats rainbow tables)
             byte[] hash = pbkdf2(pw, salt);                               // CWE-256/916: store only a strong hash
             String role = null;
 

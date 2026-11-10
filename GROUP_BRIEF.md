@@ -30,6 +30,8 @@ java -cp out Main
 ```
 (Java 17+. Run in a real terminal so the password is hidden.)
 
+Test all the demo scenarios automatically: `./test/smoke.sh`
+
 ## Who owns what (6 CWEs each)
 | Member | Area | CWEs |
 |---|---|---|
