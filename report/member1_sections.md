@@ -1,6 +1,6 @@
 # Member 1 – Abstract & Conclusion
 
-> Draft — reword in your own terms. Abstract must stay ≤ 200 words (this one is ~165).
+> Draft — reword in your own terms. Abstract must stay ≤ 200 words (this one is about 180).
 
 ---
 
