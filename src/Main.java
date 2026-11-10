@@ -29,9 +29,13 @@ public class Main {
     static final int MAX_TRIES = 3;                  // CWE-307: brute-force limit
     static final int PBKDF2_ITERATIONS = 210_000;    // CWE-916: slow, strong hash
     static final Duration LOCKOUT = Duration.ofSeconds(60);
-    static final Duration SESSION_TTL = Duration.ofMinutes(5);  // CWE-613
+    static final Duration SESSION_TTL = Duration.ofMinutes(5);  // CWE-1463: absolute session lifetime
+    static final Duration IDLE_TTL = Duration.ofMinutes(2);     // CWE-1463: inactivity timeout
 
-    static final SecureRandom RNG = new SecureRandom();          // CWE-330: not java.util.Random
+    static final String ROLE_ADMIN = "admin";                    // CWE-842: the only two groups that exist
+    static final String ROLE_USER = "user";
+
+    static final SecureRandom RNG = new SecureRandom();          // CWE-338: cryptographically strong PRNG, not java.util.Random
     static final Map<String, Integer> failures = new ConcurrentHashMap<>();
     static final Map<String, Instant> lockedUntil = new ConcurrentHashMap<>();
     static final AtomicInteger notesSaved = new AtomicInteger(); // CWE-362: atomic counter
@@ -40,21 +44,46 @@ public class Main {
 
     record User(String name, String role, byte[] salt, byte[] hash) {}
 
+    /**
+     * A logged-in session. CWE-306: only login() creates one, after the password is verified, and every
+     * note/audit function requires one, so no critical function can run without authentication.
+     */
     static class Session {
         final String id;
         final User user;
-        final SecretKey key;
+        SecretKey key;
         final Instant started = Instant.now();
+        Instant lastActive = started;
+        boolean active = true;
 
-        Session(User user, SecretKey key) {
+        private Session(User user, SecretKey key) {
             byte[] raw = new byte[32];
-            RNG.nextBytes(raw);                    // CWE-384: brand-new session ID on every login
+            RNG.nextBytes(raw);                    // CWE-338: unpredictable session ID from SecureRandom, new on every login
             this.id = HexFormat.of().formatHex(raw);
             this.user = user;
             this.key = key;
         }
-        boolean expired() { return Instant.now().isAfter(started.plus(SESSION_TTL)); } // CWE-613
-        boolean isAdmin() { return "admin".equals(user.role()); }
+        // CWE-1463: the session ends after SESSION_TTL in total OR after IDLE_TTL with no activity
+        boolean expired() {
+            Instant now = Instant.now();
+            return now.isAfter(started.plus(SESSION_TTL)) || now.isAfter(lastActive.plus(IDLE_TTL));
+        }
+        void touch() { lastActive = Instant.now(); }
+        // CWE-1465: logout/expiry really ends the session: it can't be reused and the note key is dropped
+        void invalidate() { active = false; key = null; }
+        boolean isAdmin() { return active && ROLE_ADMIN.equals(user.role()); }
+    }
+
+    /**
+     * CWE-1463/1465: checked after every prompt, not just at the menu, so an action started before the
+     * timeout can't finish after it (e.g. sitting at the "Text" prompt for an hour, then saving).
+     */
+    static boolean requireActive(Session s) {
+        if (s.active && !s.expired()) { s.touch(); return true; }
+        if (s.active) log("SESSION expired user=" + s.user.name() + " id=" + s.id.substring(0, 8));
+        s.invalidate();
+        pause("Session expired. Please log in again.");
+        return false;
     }
 
     // ───────────────────────────── main loop ─────────────────────────────
@@ -86,23 +115,24 @@ public class Main {
             screen("NOTES - " + s.user.name(), opts.toArray(String[]::new));
             String choice = prompt("Choose");
 
-            if (s.expired()) {                                      // CWE-613
-                log("SESSION expired user=" + s.user.name());
-                pause("Session expired. Please log in again.");
-                return;
-            }
+            if (!requireActive(s)) return;                          // CWE-1463
             try {
                 switch (choice) {
                     case "1" -> writeNote(s);
                     case "2" -> readNote(s);
                     case "3" -> listNotes(s);
-                    case "4" -> { log("LOGOUT user=" + s.user.name()); return; }
+                    case "4" -> {
+                        log("LOGOUT user=" + s.user.name());
+                        s.invalidate();                             // CWE-1465: end the session on logout
+                        return;
+                    }
                     case "5" -> viewLog(s);
                     default  -> pause("Invalid choice.");
                 }
             } catch (Exception e) {
                 fail(e);
             }
+            if (!s.active) return;                                  // expired during the action
         }
     }
 
@@ -124,18 +154,25 @@ public class Main {
             byte[] salt = new byte[16];
             RNG.nextBytes(salt);                                          // CWE-759: unique salt per user
             byte[] hash = pbkdf2(pw, salt);                               // CWE-256/916: store only a strong hash
-            String role = readUsers().isEmpty() ? "admin" : "user";
-            String line = name + ":" + role + ":" + b64(salt) + ":" + b64(hash) + System.lineSeparator();
+            String role = null;
 
             fileLock.lock();                                              // CWE-667: lock ...
             try {
-                Files.writeString(USERS, line, StandardOpenOption.APPEND);
+                // CWE-842: the group is decided by the program, never typed by the user. Checking "is this
+                // the first account?" and writing it happen under one lock, so two sign-ups can't both
+                // be placed in the admin group; everyone after the first goes into "user".
+                if (findUser(name) == null) {
+                    role = readUsers().isEmpty() ? ROLE_ADMIN : ROLE_USER;
+                    String line = name + ":" + role + ":" + b64(salt) + ":" + b64(hash) + System.lineSeparator();
+                    Files.writeString(USERS, line, StandardOpenOption.APPEND);
+                }
             } finally {
                 fileLock.unlock();                                        // ... always released in finally
             }
+            if (role == null) { pause("That username is taken."); return; }
             secureDir(NOTES.resolve(name));
             log("REGISTER user=" + name + " role=" + role);               // CWE-532: never log the password
-            pause("Account created" + (role.equals("admin") ? " (you are the admin)." : "."));
+            pause("Account created" + (role.equals(ROLE_ADMIN) ? " (you are the admin)." : "."));
         } finally {
             Arrays.fill(pw, '\0');                                        // CWE-226: wipe password from memory
         }
@@ -158,7 +195,8 @@ public class Main {
             byte[] salt = (u != null) ? u.salt() : new byte[16];
             byte[] attempt = pbkdf2(pw, salt);
 
-            // CWE-287: real check of the password; MessageDigest.isEqual is constant-time (CWE-208)
+            // CWE-306: a Session (needed for every note/admin function) is only created after this check passes.
+            // MessageDigest.isEqual compares in constant time, so timing doesn't leak how close a guess was (CWE-208)
             if (u != null && MessageDigest.isEqual(attempt, u.hash())) {
                 failures.remove(name);
                 lockedUntil.remove(name);
@@ -197,6 +235,7 @@ public class Main {
         if (p == null) { pause("Invalid title."); return; }
 
         String body = prompt("Text");
+        if (!requireActive(s)) return;                                             // CWE-1463: still logged in?
         if (body.length() > MAX_NOTE_CHARS) { pause("Note too long."); return; }   // CWE-400
 
         long count;
@@ -225,6 +264,7 @@ public class Main {
     static void readNote(Session s) throws Exception {
         screen("READ NOTE");
         Path p = notePath(s, prompt("Title"));
+        if (!requireActive(s)) return;                                             // CWE-1463
         if (p == null) { pause("Invalid title."); return; }
 
         byte[] data;
@@ -262,7 +302,9 @@ public class Main {
     }
 
     static void viewLog(Session s) throws IOException {
-        if (!s.isAdmin()) {                                                        // CWE-862: checked here, not just in the menu
+        // CWE-842: the admin group is checked here, inside the function, not just by hiding the menu option,
+        // so a "user" who types 5 anyway is still refused.
+        if (!s.isAdmin()) {
             log("DENIED audit-log user=" + s.user.name());
             pause("Access denied.");
             return;
@@ -295,7 +337,7 @@ public class Main {
     // CWE-327: AES-GCM (modern, authenticated) instead of DES or AES/ECB.
     static byte[] encrypt(SecretKey key, String text) throws GeneralSecurityException {
         byte[] iv = new byte[12];
-        RNG.nextBytes(iv);                                                         // CWE-330: fresh random IV
+        RNG.nextBytes(iv);                                                         // CWE-338: fresh IV from SecureRandom
         Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
         c.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
         byte[] ct = c.doFinal(text.getBytes(StandardCharsets.UTF_8));
@@ -324,7 +366,8 @@ public class Main {
         List<User> users = new ArrayList<>();
         for (String line : Files.readAllLines(USERS)) {
             String[] p = line.split(":");
-            if (p.length == 4)
+            // CWE-842: a line with an unknown group (e.g. edited to "superuser") is ignored, not trusted
+            if (p.length == 4 && (p[1].equals(ROLE_ADMIN) || p[1].equals(ROLE_USER)))
                 users.add(new User(p[0], p[1], Base64.getDecoder().decode(p[2]), Base64.getDecoder().decode(p[3])));
         }
         return users;

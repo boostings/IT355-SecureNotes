@@ -34,7 +34,7 @@ java -cp out Main
 | Member | Area | CWEs |
 |---|---|---|
 | **1** | Passwords & credentials | 798 Hard-coded Credentials · 256 Plaintext Password Storage · 549 Missing Password Masking · 916 Weak Password Hash · 521 Weak Password Requirements · 307 Brute Force |
-| **2** | Login & sessions | 287 Improper Authentication · 208 Timing Discrepancy · 330 Weak Randomness · 613 Session Expiration · 384 Session Fixation · 862 Missing Authorization |
+| **2** | Login & sessions | 306 Missing Authentication · 208 Timing Discrepancy · 338 Weak PRNG · 1463 Session Timeout · 1465 Session Invalidation after Logout · 842 User in Incorrect Group *(287/330/384/862 aren't in CWE-699 and 613 is deprecated; see `report/member2_CWEs.md`)* |
 | **3** | Files | 22 Path Traversal · 59 Link Following · 367 TOCTOU Race · 276 Bad Default Permissions · 639 User-Controlled Key (IDOR) · 404 Resource Not Closed |
 | **4** | Resources & concurrency | 400 Uncontrolled Resource Use · 770 Allocation Without Limits · 362 Race Condition · 667 Improper Locking · 226 Sensitive Data Not Cleared · 532 Secrets in Logs |
 | **5** | Crypto & errors | 327 Broken Crypto · 326 Weak Key Strength · 321 Hard-coded Crypto Key · 312 Cleartext Storage · 209 Info in Error Messages · 117 Log Injection |
@@ -73,7 +73,8 @@ Shared sections (one owner each):
    - Read note `../secret` → blocked (CWE-22)
    - Paste a 1000+ char note → rejected (CWE-400)
    - Open the note file on disk → it's encrypted gibberish (CWE-312/327)
-   - Normal user can't view audit log (CWE-862)
+   - Normal user types the hidden option 5 → "Access denied" (CWE-842)
+   - Leave the "Text" prompt open for 2+ minutes → session expired, note not saved (CWE-1463)
    - Show audit log has no passwords (CWE-532)
 5. Conclusion + what we learned working together (Member 1)
 
