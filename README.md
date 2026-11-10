@@ -50,11 +50,11 @@ These are the moments from the live presentation:
 |---|---|---|
 | Wrong password 3× | Account locked for a minute | 307 |
 | Read a note titled `../secret` | "Invalid title." | 22 |
-| Paste a 1000+ character note | "Note too long." | 400 |
-| Open a `.note` file in `vault/notes/` | Encrypted gibberish | 312 / 327 |
+| Paste a 1000+ character note | "Note too long." | 770 |
+| Open a `.note` file in `vault/notes/` | Encrypted gibberish | 312 / 1240 |
 | Log in as a normal user and type `5` | "Access denied." | 842 |
 | Leave the "Text" prompt open for 2+ minutes | Session expired, note not saved | 1463 |
-| Open `vault/audit.log` | No passwords or note contents | 532 |
+| Open `vault/audit.log` | No passwords or note contents | 778 |
 
 ## The 30 CWEs
 
@@ -62,9 +62,9 @@ These are the moments from the live presentation:
 |---|---|---|
 | 1 | Passwords & credentials | 798, 256, 549, 916, 521, 307 |
 | 2 | Login & sessions | 306, 208, 338, 1463, 1465, 842 |
-| 3 | Files | 22, 59, 367, 276, 639, 404 |
-| 4 | Resources & concurrency | 400, 770, 362, 667, 226, 532 |
-| 5 | Crypto & errors | 327, 326, 321, 312, 209, 117 |
+| 3 | Files | 22, 59, 367, 276, 639, 772 |
+| 4 | Resources & concurrency | 770, 366, 820, 821, 1188, 778 |
+| 5 | Crypto & errors | 312, 117, 1240, 1204, 323, 497 |
 
 ## Repo layout
 

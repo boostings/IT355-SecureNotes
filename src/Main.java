@@ -24,7 +24,7 @@ public class Main {
     static final Path NOTES = VAULT.resolve("notes");
     static final Path LOG   = VAULT.resolve("audit.log");
 
-    static final int MAX_NOTE_CHARS = 1000;          // CWE-400: cap input size
+    static final int MAX_NOTE_CHARS = 1000;          // CWE-770: cap input size
     static final int MAX_NOTES_PER_USER = 20;        // CWE-770: cap allocations per user
     static final int MAX_TRIES = 3;                  // CWE-307: brute-force limit
     static final int PBKDF2_ITERATIONS = 210_000;    // CWE-916: slow, strong hash
@@ -38,7 +38,7 @@ public class Main {
     static final SecureRandom RNG = new SecureRandom();          // CWE-338: cryptographically strong PRNG, not java.util.Random
     static final Map<String, Integer> failures = new ConcurrentHashMap<>();
     static final Map<String, Instant> lockedUntil = new ConcurrentHashMap<>();
-    static final AtomicInteger notesSaved = new AtomicInteger(); // CWE-362: atomic counter
+    static final AtomicInteger notesSaved = new AtomicInteger(); // CWE-366: atomic counter, no lost updates between threads
     static final ReentrantLock fileLock = new ReentrantLock();
     static final Scanner in = new Scanner(System.in);
 
@@ -163,7 +163,7 @@ public class Main {
             byte[] hash = pbkdf2(pw, salt);                               // CWE-256/916: store only a strong hash
             String role = null;
 
-            fileLock.lock();                                              // CWE-667: lock ...
+            fileLock.lock();                                              // CWE-821: lock ...
             try {
                 // CWE-842: the group is decided by the program, never typed by the user. Checking "is this
                 // the first account?" and writing it happen under one lock, so two sign-ups can't both
@@ -178,10 +178,10 @@ public class Main {
             }
             if (role == null) { err("That username is taken."); return; }
             secureDir(NOTES.resolve(name));
-            log("REGISTER user=" + name + " role=" + role);               // CWE-532: never log the password
+            log("REGISTER user=" + name + " role=" + role);               // CWE-778: security event logged (never the password)
             ok("Account created" + (role.equals(ROLE_ADMIN) ? " (you are the admin)." : ". You can log in now."));
         } finally {
-            Arrays.fill(pw, '\0');                                        // CWE-226: wipe password from memory
+            Arrays.fill(pw, '\0');                                        // good practice: wipe password from memory
         }
     }
 
@@ -220,7 +220,7 @@ public class Main {
             err("Invalid username or password.");   // same message either way: no username hints
             return null;
         } finally {
-            Arrays.fill(pw, '\0');                     // CWE-226
+            Arrays.fill(pw, '\0');                     // good practice: wipe password from memory
         }
     }
 
@@ -248,18 +248,18 @@ public class Main {
 
         String body = prompt("Text");
         if (!requireActive(s)) return;                                             // CWE-1463: still logged in?
-        if (body.length() > MAX_NOTE_CHARS) {                                      // CWE-400
+        if (body.length() > MAX_NOTE_CHARS) {                                      // CWE-770
             err("Note too long. (" + body.length() + "/" + MAX_NOTE_CHARS + " characters)");
             return;
         }
 
         long count;
-        try (var files = Files.list(p.getParent())) { count = files.count(); }     // CWE-404: stream closed
+        try (var files = Files.list(p.getParent())) { count = files.count(); }     // CWE-772: stream released as soon as it is used
         if (count >= MAX_NOTES_PER_USER) { err("Note limit reached."); return; }   // CWE-770
 
         byte[] data = encrypt(s.key, body);                                        // CWE-312: never stored as plaintext
 
-        fileLock.lock();                                                           // CWE-667
+        fileLock.lock();                                                           // CWE-821: released in finally below
         try {
             // CWE-367: createFile is atomic, no "check if exists, then write" gap
             Files.createFile(p);
@@ -271,8 +271,8 @@ public class Main {
         } finally {
             fileLock.unlock();
         }
-        notesSaved.incrementAndGet();                                              // CWE-362
-        log("NOTE saved user=" + s.user.name() + " title=" + p.getFileName());     // CWE-532: no note contents
+        notesSaved.incrementAndGet();                                              // CWE-366
+        log("NOTE saved user=" + s.user.name() + " title=" + p.getFileName());     // CWE-778: logged without note contents
         ok("Note saved and encrypted.");
     }
 
@@ -286,9 +286,9 @@ public class Main {
         if (p == null) { err("Invalid title."); return; }
 
         byte[] data;
-        // CWE-404: try-with-resources closes the file; CWE-59: refuse to follow symlinks
+        // CWE-772: try-with-resources releases the file; CWE-59: refuse to follow symlinks
         try (InputStream is = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
-            data = is.readNBytes(8192);                                            // CWE-400: bounded read
+            data = is.readNBytes(8192);                                            // CWE-770: bounded read
         } catch (NoSuchFileException e) {
             err("No note with that title.");
             return;
@@ -314,7 +314,7 @@ public class Main {
         List<String> names = new ArrayList<>();
         Path dir = NOTES.resolve(s.user.name());
         if (!Files.isDirectory(dir)) return names;
-        try (var files = Files.list(dir)) {                                        // CWE-404
+        try (var files = Files.list(dir)) {                                        // CWE-772
             files.forEach(f -> names.add(f.getFileName().toString().replace(".note", "")));
         }
         Collections.sort(names);
@@ -366,22 +366,22 @@ public class Main {
         try {
             return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded();
         } finally {
-            spec.clearPassword();                                                  // CWE-226
+            spec.clearPassword();                                                  // good practice: wipe password from memory
         }
     }
 
-    // CWE-321: the encryption key is derived from the user's password, never hard-coded in the source.
-    // CWE-326: 256-bit AES key.
+    // The encryption key is derived from the user's password, never hard-coded in the source.
+    // CWE-1240: standard PBKDF2 from the JDK, 256-bit AES key; no home-made key scheme.
     static SecretKey deriveNoteKey(char[] pw, byte[] salt) throws GeneralSecurityException {
         byte[] keySalt = Arrays.copyOf(salt, salt.length + 4);
         System.arraycopy("note".getBytes(StandardCharsets.UTF_8), 0, keySalt, salt.length, 4);
         return new SecretKeySpec(pbkdf2(pw, keySalt), "AES");
     }
 
-    // CWE-327: AES-GCM (modern, authenticated) instead of DES or AES/ECB.
+    // CWE-1240: AES-GCM from the JDK's vetted provider, not a home-made or risky cipher (DES, AES/ECB).
     static byte[] encrypt(SecretKey key, String text) throws GeneralSecurityException {
         byte[] iv = new byte[12];
-        RNG.nextBytes(iv);                                                         // CWE-338: fresh IV from SecureRandom
+        RNG.nextBytes(iv);                                                         // CWE-1204 + CWE-323: fresh random IV every time, never reused with this key
         Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
         c.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
         byte[] ct = c.doFinal(text.getBytes(StandardCharsets.UTF_8));
@@ -398,6 +398,7 @@ public class Main {
 
     // ───────────────────────────── storage & logging ─────────────────────────────
 
+    // CWE-1188: secure defaults; the vault, user file and log are created owner-only from the start.
     static void setup() throws IOException {
         secureDir(VAULT);
         secureDir(NOTES);
@@ -437,17 +438,20 @@ public class Main {
     }
 
     // CWE-117: strip newlines so a username like "bob\nLOGIN ok user=admin" can't forge log lines.
-    // CWE-532: callers only ever pass usernames/titles, never passwords, keys or note text.
+    // CWE-778: every security event (register, login ok/failed, denied, expiry, errors) is recorded;
+    // callers only ever pass usernames/titles, never passwords, keys or note text.
+    // CWE-820: synchronized, so two threads can't interleave half-written log lines.
     static synchronized void log(String msg) {
         String clean = msg.replaceAll("[\\r\\n\\t]", "_");
-        try (BufferedWriter w = Files.newBufferedWriter(LOG, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) { // CWE-404
+        try (BufferedWriter w = Files.newBufferedWriter(LOG, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) { // CWE-772
             w.write(Instant.now() + " " + clean);
             w.newLine();
         } catch (IOException ignored) {
         }
     }
 
-    // CWE-209: the user sees a generic message; only the exception type goes in the private log.
+    // CWE-497: the user sees a generic message, never stack traces, paths or Java versions;
+    // only the exception type goes in the private log.
     static void fail(Exception e) {
         log("ERROR " + e.getClass().getSimpleName());
         err("Something went wrong. Please try again.");

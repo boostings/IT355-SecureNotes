@@ -28,12 +28,12 @@ out=$(run 1 bob "$USER_PW" 1 secret1 "my hidden text" "" 2 secret1 "" 1 ../secre
 check "note saved encrypted"                       "$out" "Note saved and encrypted."
 check "note decrypts for owner"                    "$out" "my hidden text"
 check "path traversal blocked (CWE-22)"            "$out" "Invalid title."
-check "oversized note rejected (CWE-400)"          "$out" "Note too long."
+check "oversized note rejected (CWE-770)"          "$out" "Note too long."
 check "non-admin denied audit log (CWE-842)"       "$out" "Access denied."
 check "audit log option hidden for user"           "$out" "View audit log" absent
 
 disk=$(cat vault/notes/bob/secret1.note)
-check "note file is ciphertext (CWE-312/327)"      "$disk" "my hidden text" absent
+check "note file is ciphertext (CWE-312/1240)"      "$disk" "my hidden text" absent
 check "users file has no plaintext pw (CWE-256)"   "$(cat vault/users.txt)" "$USER_PW" absent
 
 out=$(run 1 bob x "" 1 bob x "" 1 bob x "" 1 bob "" 3)
@@ -43,8 +43,8 @@ out=$(run 1 alice "$ADMIN_PW" 5 "" 4 3)
 check "admin can view audit log"                   "$out" "Audit log"
 
 log=$(cat vault/audit.log)
-check "audit log has no passwords (CWE-532)"       "$log" "$USER_PW" absent
-check "audit log has no note text (CWE-532)"       "$log" "my hidden text" absent
+check "audit log has no passwords (CWE-778)"       "$log" "$USER_PW" absent
+check "audit log has no note text (CWE-778)"       "$log" "my hidden text" absent
 check "audit log records denial"                   "$log" "DENIED audit-log user=bob"
 
 perm=$(stat -f '%Lp' vault/notes/bob/secret1.note 2>/dev/null || stat -c '%a' vault/notes/bob/secret1.note)

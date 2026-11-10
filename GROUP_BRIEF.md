@@ -37,9 +37,9 @@ Test all the demo scenarios automatically: `./test/smoke.sh`
 |---|---|---|
 | **1** | Passwords & credentials | 798 Hard-coded Credentials · 256 Plaintext Password Storage · 549 Missing Password Masking · 916 Weak Password Hash · 521 Weak Password Requirements · 307 Brute Force |
 | **2** | Login & sessions | 306 Missing Authentication · 208 Timing Discrepancy · 338 Weak PRNG · 1463 Session Timeout · 1465 Session Invalidation after Logout · 842 User in Incorrect Group *(287/330/384/862 aren't in CWE-699 and 613 is deprecated; see `report/member2_CWEs.md`)* |
-| **3** | Files | 22 Path Traversal · 59 Link Following · 367 TOCTOU Race · 276 Bad Default Permissions · 639 User-Controlled Key (IDOR) · 404 Resource Not Closed |
-| **4** | Resources & concurrency | 400 Uncontrolled Resource Use · 770 Allocation Without Limits · 362 Race Condition · 667 Improper Locking · 226 Sensitive Data Not Cleared · 532 Secrets in Logs |
-| **5** | Crypto & errors | 327 Broken Crypto · 326 Weak Key Strength · 321 Hard-coded Crypto Key · 312 Cleartext Storage · 209 Info in Error Messages · 117 Log Injection |
+| **3** | Files | 22 Path Traversal · 59 Link Following · 367 TOCTOU Race · 276 Bad Default Permissions · 639 User-Controlled Key (IDOR) · 772 Resource Not Released |
+| **4** | Resources & concurrency | 770 Allocation Without Limits · 366 Race Condition in a Thread · 820 Missing Synchronization · 821 Incorrect Synchronization · 1188 Insecure Defaults · 778 Insufficient Logging |
+| **5** | Crypto & errors | 312 Cleartext Storage · 117 Log Injection · 1240 Risky Crypto Implementation · 1204 Weak IV · 323 Nonce Reuse · 497 System Info Exposure |
 
 **First thing everyone does:** open your 6 CWEs on cwe.mitre.org and check they're in the CWE-699 view and NOT in the banned categories (Type Errors, Bad Coding Practices, Numeric, Behavioral, UI Security, Communication Channel, Error Conditions, Expression, Data Validation, Documentation). If one is banned, post in chat and swap it.
 
@@ -73,11 +73,11 @@ Shared sections (one owner each):
 4. **Live demo** (Member 5 drives, each member explains their part):
    - Wrong password 3× → account locked (CWE-307)
    - Read note `../secret` → blocked (CWE-22)
-   - Paste a 1000+ char note → rejected (CWE-400)
-   - Open the note file on disk → it's encrypted gibberish (CWE-312/327)
+   - Paste a 1000+ char note → rejected (CWE-770)
+   - Open the note file on disk → it's encrypted gibberish (CWE-312/1240)
    - Normal user types the hidden option 5 → "Access denied" (CWE-842)
    - Leave the "Text" prompt open for 2+ minutes → session expired, note not saved (CWE-1463)
-   - Show audit log has no passwords (CWE-532)
+   - Show audit log has no passwords (CWE-778)
 5. Conclusion + what we learned working together (Member 1)
 
 Stay inside the time limit and keep the handoffs between speakers smooth.
