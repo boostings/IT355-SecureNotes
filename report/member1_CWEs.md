@@ -1,6 +1,9 @@
 # Member 1 – Passwords & Credentials
 
-> Draft — reword in your own terms before submitting. Confirm each CWE's category on cwe.mitre.org is not on the banned list.
+> Draft — reword in your own terms before submitting.
+>
+> Categories verified on cwe.mitre.org (CWE-699 view), none banned:
+> 798 → Credentials Management Errors (255), Key Management Errors (320) · 256, 521, 549 → Credentials Management Errors (255) · 916 → Credentials Management Errors (255), Cryptographic Issues (310) · 307 → Authentication Errors (1211)
 
 ---
 
@@ -28,15 +31,15 @@ Stolen password databases are among the most common results of a breach. Because
 
 ---
 
-## CWE-759: Use of a One-Way Hash without a Salt
+## CWE-549: Missing Password Field Masking
 
 **Description:**
-A salt is a random value added to a password before it is hashed. Without one, two users with the same password get the same hash, and an attacker can use precomputed "rainbow tables", huge lists of common passwords and their hashes, to reverse many hashes almost instantly.
+This weakness happens when a program shows the password on screen as the user types it, instead of hiding it with dots, asterisks, or nothing at all. Anyone looking at the screen, sitting behind the user, or watching a screen share or recording can read it.
 
 **Why is this important:**
-Hashing without a salt gives a false sense of security. The passwords look scrambled, but common ones can be cracked in seconds and identical passwords stand out right away. A unique salt for each user forces the attacker to crack every password separately, which makes mass cracking far more expensive.
+"Shoulder surfing" needs no hacking skill at all, so it's one of the easiest ways to steal a password. It is a real risk in labs, offices, coffee shops, and during presentations. Hiding the typed characters is a small, cheap step that closes this hole.
 
-**In SecureNotes:** Each user gets a 16-byte random salt from `SecureRandom`, stored next to their hash (`register()`).
+**In SecureNotes:** Passwords are read with `System.console().readPassword()`, which hides the characters as they're typed (`readPassword()`). The password is returned as a `char[]` that gets wiped after use, rather than a `String`.
 
 ---
 

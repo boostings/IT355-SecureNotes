@@ -401,7 +401,7 @@ public class Main {
 
     static char[] readPassword(String label) {
         Console c = System.console();
-        if (c != null) return c.readPassword("  > %s: ", label);   // hidden typing in a real terminal
+        if (c != null) return c.readPassword("  > %s: ", label);   // CWE-549: password is masked while typing
         System.out.print("  > " + label + ": ");                   // fallback for IDE consoles
         if (!in.hasNextLine()) System.exit(0);
         return in.nextLine().toCharArray();

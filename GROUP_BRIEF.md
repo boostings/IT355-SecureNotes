@@ -33,7 +33,7 @@ java -cp out Main
 ## Who owns what (6 CWEs each)
 | Member | Area | CWEs |
 |---|---|---|
-| **1** | Passwords & credentials | 798 Hard-coded Credentials · 256 Plaintext Password Storage · 759 Hash Without Salt · 916 Weak Password Hash · 521 Weak Password Requirements · 307 Brute Force |
+| **1** | Passwords & credentials | 798 Hard-coded Credentials · 256 Plaintext Password Storage · 549 Missing Password Masking · 916 Weak Password Hash · 521 Weak Password Requirements · 307 Brute Force |
 | **2** | Login & sessions | 287 Improper Authentication · 208 Timing Discrepancy · 330 Weak Randomness · 613 Session Expiration · 384 Session Fixation · 862 Missing Authorization |
 | **3** | Files | 22 Path Traversal · 59 Link Following · 367 TOCTOU Race · 276 Bad Default Permissions · 639 User-Controlled Key (IDOR) · 404 Resource Not Closed |
 | **4** | Resources & concurrency | 400 Uncontrolled Resource Use · 770 Allocation Without Limits · 362 Race Condition · 667 Improper Locking · 226 Sensitive Data Not Cleared · 532 Secrets in Logs |
