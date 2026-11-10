@@ -14,7 +14,7 @@ Software vulnerabilities rarely come from exotic attacks. Most come from a small
 
 ## Conclusion
 
-The Common Weakness Enumeration turns decades of security failures into a shared vocabulary. Instead of treating each vulnerability as a one-off surprise, CWE groups them into types with known causes, consequences, and fixes. Working on this project showed us that most of the thirty weaknesses we studied are not hard to prevent. Using a `PreparedStatement`-style safe API, `SecureRandom` instead of `Random`, try-with-resources, PBKDF2 for passwords, AES-GCM for encryption, and an authorization check inside every sensitive method each took only a few lines of Java. The hard part is knowing the weakness exists in the first place, and that is exactly the gap CWE fills.
+The Common Weakness Enumeration turns decades of security failures into a shared vocabulary. Instead of treating each vulnerability as a one-off surprise, CWE groups them into types with known causes, consequences, and fixes. Working on this project showed us that most of the thirty weaknesses we studied are not hard to prevent. Validating file names to block path traversal, `SecureRandom` instead of `Random`, try-with-resources, PBKDF2 for passwords, AES-GCM for encryption, and an authorization check inside every sensitive method each took only a few lines of Java. The hard part is knowing the weakness exists in the first place, and that is exactly the gap CWE fills.
 
 We also learned how CWE fits into a larger system. A CWE describes the kind of mistake, a CVE records a real instance of it in a specific product, NVD scores and tracks those CVEs, and CAPEC describes how attackers exploit the weakness. Together they connect a developer's coding decision to real-world impact.
 
