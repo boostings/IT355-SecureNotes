@@ -82,7 +82,7 @@ public class Main {
         if (s.active && !s.expired()) { s.touch(); return true; }
         if (s.active) log("SESSION expired user=" + s.user.name() + " id=" + s.id.substring(0, 8));
         s.invalidate();
-        pause("Session expired. Please log in again.");
+        warn("Session expired. Please log in again.");
         return false;
     }
 
@@ -92,12 +92,17 @@ public class Main {
         try {
             setup();
             while (true) {
-                screen("SECURE NOTES", "1) Login", "2) Register", "3) Quit");
+                screen("Welcome",
+                        hint("Private notes, encrypted on disk."),
+                        "",
+                        item("1", "Log in"),
+                        item("2", "Create an account"),
+                        item("3", "Quit"));
                 switch (prompt("Choose")) {
                     case "1" -> { Session s = login(); if (s != null) menu(s); }
                     case "2" -> register();
-                    case "3" -> { System.out.println("  Goodbye!"); return; }
-                    default  -> pause("Invalid choice.");
+                    case "3" -> { System.out.println("  " + c(CYAN, "Goodbye!")); return; }
+                    default  -> err("Invalid choice.");
                 }
             }
         } catch (Exception e) {
@@ -108,11 +113,11 @@ public class Main {
     static void menu(Session s) {
         while (true) {
             List<String> opts = new ArrayList<>(List.of(
-                    "1) Write note", "2) Read note", "3) List notes", "4) Logout"));
-            if (s.isAdmin()) opts.add("5) View audit log (admin)");
+                    item("1", "Write a note"), item("2", "Read a note"), item("3", "List my notes"), item("4", "Log out")));
+            if (s.isAdmin()) opts.add(item("5", "View audit log") + "   (admin)");
             opts.add("");
-            opts.add("Notes saved this run: " + notesSaved.get());
-            screen("NOTES - " + s.user.name(), opts.toArray(String[]::new));
+            opts.add(hint(noteCount(s) + "/" + MAX_NOTES_PER_USER + " notes stored · " + notesSaved.get() + " saved this run"));
+            panel("Main menu", status(s), opts.toArray(String[]::new));
             String choice = prompt("Choose");
 
             if (!requireActive(s)) return;                          // CWE-1463
@@ -127,7 +132,7 @@ public class Main {
                         return;
                     }
                     case "5" -> viewLog(s);
-                    default  -> pause("Invalid choice.");
+                    default  -> err("Invalid choice.");
                 }
             } catch (Exception e) {
                 fail(e);
@@ -140,16 +145,18 @@ public class Main {
 
     // CWE-798: there are NO hard-coded usernames/passwords. The first account registered becomes admin.
     static void register() throws Exception {
-        screen("REGISTER",
-                "Username: 3-16 letters, digits or _",
-                "Password: 10+ chars, upper, lower and digit");
+        screen("Create account",
+                "Username  3-16 letters, digits or _",
+                "Password  10+ chars with upper, lower and a digit",
+                "",
+                hint("The first account created becomes the admin."));
         String name = prompt("Username");
-        if (!name.matches("[A-Za-z0-9_]{3,16}")) { pause("Invalid username."); return; }
-        if (findUser(name) != null) { pause("That username is taken."); return; }
+        if (!name.matches("[A-Za-z0-9_]{3,16}")) { err("Invalid username."); return; }
+        if (findUser(name) != null) { err("That username is taken."); return; }
 
         char[] pw = readPassword("Password");
         try {
-            if (!isStrong(pw)) { pause("Password too weak."); return; }   // CWE-521
+            if (!isStrong(pw)) { err("Password too weak. Need 10+ chars with upper, lower and a digit."); return; }   // CWE-521
 
             byte[] salt = new byte[16];
             RNG.nextBytes(salt);                                          // CWE-916: unique random salt per user (defeats rainbow tables)
@@ -169,22 +176,22 @@ public class Main {
             } finally {
                 fileLock.unlock();                                        // ... always released in finally
             }
-            if (role == null) { pause("That username is taken."); return; }
+            if (role == null) { err("That username is taken."); return; }
             secureDir(NOTES.resolve(name));
             log("REGISTER user=" + name + " role=" + role);               // CWE-532: never log the password
-            pause("Account created" + (role.equals(ROLE_ADMIN) ? " (you are the admin)." : "."));
+            ok("Account created" + (role.equals(ROLE_ADMIN) ? " (you are the admin)." : ". You can log in now."));
         } finally {
             Arrays.fill(pw, '\0');                                        // CWE-226: wipe password from memory
         }
     }
 
     static Session login() throws Exception {
-        screen("LOGIN");
+        screen("Log in", hint("3 wrong passwords locks the account for 60 s."));
         String name = prompt("Username");
 
         Instant until = lockedUntil.get(name);
         if (until != null && Instant.now().isBefore(until)) {            // CWE-307
-            pause("Too many failed attempts. Try again in a minute.");
+            err("Too many failed attempts. Try again in a minute.");
             return null;
         }
 
@@ -210,7 +217,7 @@ public class Main {
                 failures.remove(name);
             }
             log("LOGIN failed user=" + name);
-            pause("Invalid username or password.");   // same message either way: no username hints
+            err("Invalid username or password.");   // same message either way: no username hints
             return null;
         } finally {
             Arrays.fill(pw, '\0');                     // CWE-226
@@ -230,17 +237,25 @@ public class Main {
     // ───────────────────────────── notes ─────────────────────────────
 
     static void writeNote(Session s) throws Exception {
-        screen("WRITE NOTE", "Title: letters, digits, - or _ (max 32)", "Text: max " + MAX_NOTE_CHARS + " characters");
+        panel("Write a note", status(s),
+                "Title  letters, digits, - or _  (max 32)",
+                "Text   one line, up to " + MAX_NOTE_CHARS + " characters",
+                "",
+                hint("The note is encrypted before it touches disk."),
+                hint((MAX_NOTES_PER_USER - noteCount(s)) + " of " + MAX_NOTES_PER_USER + " note slots free."));
         Path p = notePath(s, prompt("Title"));
-        if (p == null) { pause("Invalid title."); return; }
+        if (p == null) { err("Invalid title."); return; }
 
         String body = prompt("Text");
         if (!requireActive(s)) return;                                             // CWE-1463: still logged in?
-        if (body.length() > MAX_NOTE_CHARS) { pause("Note too long."); return; }   // CWE-400
+        if (body.length() > MAX_NOTE_CHARS) {                                      // CWE-400
+            err("Note too long. (" + body.length() + "/" + MAX_NOTE_CHARS + " characters)");
+            return;
+        }
 
         long count;
         try (var files = Files.list(p.getParent())) { count = files.count(); }     // CWE-404: stream closed
-        if (count >= MAX_NOTES_PER_USER) { pause("Note limit reached."); return; } // CWE-770
+        if (count >= MAX_NOTES_PER_USER) { err("Note limit reached."); return; }   // CWE-770
 
         byte[] data = encrypt(s.key, body);                                        // CWE-312: never stored as plaintext
 
@@ -251,43 +266,63 @@ public class Main {
             restrict(p, false);                                                    // CWE-276: owner-only permissions
             Files.write(p, data, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS); // CWE-59
         } catch (FileAlreadyExistsException e) {
-            pause("A note with that title already exists.");
+            err("A note with that title already exists.");
             return;
         } finally {
             fileLock.unlock();
         }
         notesSaved.incrementAndGet();                                              // CWE-362
         log("NOTE saved user=" + s.user.name() + " title=" + p.getFileName());     // CWE-532: no note contents
-        pause("Note saved and encrypted.");
+        ok("Note saved and encrypted.");
     }
 
     static void readNote(Session s) throws Exception {
-        screen("READ NOTE");
+        List<String> lines = new ArrayList<>(List.of("Your notes:"));
+        for (String t : noteTitles(s)) lines.add("  • " + t);
+        if (lines.size() == 1) lines.add(hint("(no notes yet)"));
+        panel("Read a note", status(s), lines.toArray(String[]::new));
         Path p = notePath(s, prompt("Title"));
         if (!requireActive(s)) return;                                             // CWE-1463
-        if (p == null) { pause("Invalid title."); return; }
+        if (p == null) { err("Invalid title."); return; }
 
         byte[] data;
         // CWE-404: try-with-resources closes the file; CWE-59: refuse to follow symlinks
         try (InputStream is = Files.newInputStream(p, LinkOption.NOFOLLOW_LINKS)) {
             data = is.readNBytes(8192);                                            // CWE-400: bounded read
         } catch (NoSuchFileException e) {
-            pause("No note with that title.");
+            err("No note with that title.");
             return;
         }
         String text = decrypt(s.key, data);
-        screen("NOTE: " + p.getFileName().toString().replace(".note", ""), wrap(text, 46));
+        String title = p.getFileName().toString().replace(".note", "");
+        panel("Note: " + title, status(s), wrap(text, WIDTH - 2));
         pause("");
     }
 
     static void listNotes(Session s) throws IOException {
         List<String> names = new ArrayList<>();
-        try (var files = Files.list(NOTES.resolve(s.user.name()))) {              // CWE-404
-            files.forEach(f -> names.add(" - " + f.getFileName().toString().replace(".note", "")));
-        }
-        if (names.isEmpty()) names.add("(no notes yet)");
-        screen("YOUR NOTES", names.toArray(String[]::new));
+        for (String t : noteTitles(s)) names.add("• " + t);
+        if (names.isEmpty()) names.add(hint("(no notes yet: choose 1 to write one)"));
+        names.add("");
+        names.add(hint(noteTitles(s).size() + "/" + MAX_NOTES_PER_USER + " slots used"));
+        panel("My notes", status(s), names.toArray(String[]::new));
         pause("");
+    }
+
+    /** Sorted titles of the logged-in user's notes (owner from the session: CWE-639). */
+    static List<String> noteTitles(Session s) throws IOException {
+        List<String> names = new ArrayList<>();
+        Path dir = NOTES.resolve(s.user.name());
+        if (!Files.isDirectory(dir)) return names;
+        try (var files = Files.list(dir)) {                                        // CWE-404
+            files.forEach(f -> names.add(f.getFileName().toString().replace(".note", "")));
+        }
+        Collections.sort(names);
+        return names;
+    }
+
+    static int noteCount(Session s) {
+        try { return noteTitles(s).size(); } catch (IOException e) { return 0; }
     }
 
     /**
@@ -306,12 +341,21 @@ public class Main {
         // so a "user" who types 5 anyway is still refused.
         if (!s.isAdmin()) {
             log("DENIED audit-log user=" + s.user.name());
-            pause("Access denied.");
+            err("Access denied.");
             return;
         }
         List<String> lines = Files.readAllLines(LOG);
         List<String> last = lines.subList(Math.max(0, lines.size() - 15), lines.size());
-        screen("AUDIT LOG (last 15)", last.stream().map(l -> l.length() > 46 ? l.substring(20) : l).toArray(String[]::new));
+        List<String> shown = new ArrayList<>();
+        for (String l : last) {
+            // "2026-11-10T20:57:43.123Z LOGIN ok user=x"  ->  "20:57:43  LOGIN ok user=x"
+            int sp = l.indexOf(' ');
+            String ts = sp > 0 ? l.substring(0, sp) : "";
+            String time = ts.length() >= 19 && ts.charAt(10) == 'T' ? ts.substring(11, 19) : ts;
+            shown.add(time + "  " + (sp > 0 ? l.substring(sp + 1) : l));
+        }
+        if (shown.isEmpty()) shown.add(hint("(log is empty)"));
+        panel("Audit log", status(s) + " · last " + last.size() + " of " + lines.size(), shown.toArray(String[]::new));
         pause("");
     }
 
@@ -406,55 +450,115 @@ public class Main {
     // CWE-209: the user sees a generic message; only the exception type goes in the private log.
     static void fail(Exception e) {
         log("ERROR " + e.getClass().getSimpleName());
-        pause("Something went wrong. Please try again.");
+        err("Something went wrong. Please try again.");
     }
 
     // ───────────────────────────── TUI helpers ─────────────────────────────
 
-    static final int WIDTH = 48;
+    static final int WIDTH = 52;   // inner width of the box
 
-    static void screen(String title, String... lines) {
-        System.out.print("\033[H\033[2J");
-        System.out.flush();
-        String bar = "═".repeat(WIDTH);
-        System.out.println("╔" + bar + "╗");
-        System.out.println("║ " + pad(title, WIDTH - 1) + "║");
-        System.out.println("╠" + bar + "╣");
-        for (String l : lines) System.out.println("║ " + pad(l, WIDTH - 1) + "║");
-        System.out.println("╚" + bar + "╝");
+    // Colors only in a real terminal; piped/IDE output and NO_COLOR stay plain text.
+    static final boolean COLOR = System.console() != null
+            && System.getenv("NO_COLOR") == null && !"dumb".equals(System.getenv("TERM"));
+    static final String RESET = "\033[0m", BOLD = "\033[1m", DIM = "\033[2m",
+            RED = "\033[31m", GREEN = "\033[32m", YELLOW = "\033[33m", CYAN = "\033[36m", MAGENTA = "\033[35m";
+
+    static String c(String code, String s) { return COLOR ? code + s + RESET : s; }
+
+    /** Menu entry: renders as "[1] Write note" with the key highlighted. */
+    static String item(String key, String label) { return "[" + key + "] " + label; }
+    /** Dimmed hint line. */
+    static String hint(String s) { return "~" + s; }
+
+    static void screen(String title, String... lines) { panel(title, null, lines); }
+
+    static void panel(String title, String status, String... lines) {
+        if (COLOR) { System.out.print("\033[H\033[2J"); System.out.flush(); }
+        else System.out.println();
+        String bar = "─".repeat(WIDTH + 2);
+        System.out.println(c(CYAN, "╭" + bar + "╮"));
+        String brand = "SecureNotes";
+        String right = title;
+        int gap = WIDTH - brand.length() - right.length();
+        String head = gap >= 1
+                ? c(BOLD + CYAN, brand) + " ".repeat(gap) + c(BOLD, right)
+                : c(BOLD, pad(right, WIDTH));
+        System.out.println(c(CYAN, "│ ") + head + c(CYAN, " │"));
+        if (status != null) System.out.println(c(CYAN, "│ ") + c(DIM, pad(status, WIDTH)) + c(CYAN, " │"));
+        System.out.println(c(CYAN, "├" + bar + "┤"));
+        System.out.println(c(CYAN, "│ ") + " ".repeat(WIDTH) + c(CYAN, " │"));
+        for (String l : lines) System.out.println(c(CYAN, "│ ") + style(l) + c(CYAN, " │"));
+        System.out.println(c(CYAN, "│ ") + " ".repeat(WIDTH) + c(CYAN, " │"));
+        System.out.println(c(CYAN, "╰" + bar + "╯"));
+    }
+
+    /** Pads to the box width first, then adds color, so ANSI codes never break the alignment. */
+    static String style(String l) {
+        if (l.startsWith("~")) return c(DIM, pad("  " + l.substring(1), WIDTH));
+        if (l.matches("^\\[\\w\\] .*")) {
+            String p = pad("  " + l, WIDTH);
+            return "  " + c(BOLD + YELLOW, p.substring(2, 5)) + p.substring(5);
+        }
+        return pad("  " + l, WIDTH);
     }
 
     static String pad(String s, int n) {
-        if (s.length() > n) s = s.substring(0, n);
+        if (s.length() > n) s = s.substring(0, n - 1) + "…";
         return s + " ".repeat(n - s.length());
     }
 
+    /** Word wrap that keeps words whole (hard-splits only words longer than a line). */
     static String[] wrap(String text, int n) {
         List<String> out = new ArrayList<>();
-        for (int i = 0; i < text.length(); i += n) out.add(text.substring(i, Math.min(text.length(), i + n)));
-        if (out.isEmpty()) out.add("(empty)");
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            while (word.length() > n) {
+                if (line.length() > 0) { out.add(line.toString()); line.setLength(0); }
+                out.add(word.substring(0, n));
+                word = word.substring(n);
+            }
+            if (line.length() > 0 && line.length() + 1 + word.length() > n) { out.add(line.toString()); line.setLength(0); }
+            if (line.length() > 0) line.append(' ');
+            line.append(word);
+        }
+        if (line.length() > 0) out.add(line.toString());
+        if (out.isEmpty() || (out.size() == 1 && out.get(0).isBlank())) return new String[] { "(empty note)" };
         return out.toArray(String[]::new);
     }
 
+    /** "alice · admin · 4:12 left" — time until the session ends (absolute or idle limit, whichever is first). */
+    static String status(Session s) {
+        Instant end = s.started.plus(SESSION_TTL);
+        Instant idleEnd = s.lastActive.plus(IDLE_TTL);
+        if (idleEnd.isBefore(end)) end = idleEnd;
+        long secs = Math.max(0, Duration.between(Instant.now(), end).getSeconds());
+        return s.user.name() + " · " + s.user.role() + " · session " + secs / 60 + ":" + String.format("%02d", secs % 60) + " left";
+    }
+
     static String prompt(String label) {
-        System.out.print("  > " + label + ": ");
+        System.out.print("  " + c(CYAN, "›") + " " + c(BOLD, label) + ": ");
         if (!in.hasNextLine()) System.exit(0);
         return in.nextLine().trim();
     }
 
     static char[] readPassword(String label) {
-        Console c = System.console();
-        if (c != null) return c.readPassword("  > %s: ", label);   // CWE-549: password is masked while typing
-        System.out.print("  > " + label + ": ");                   // fallback for IDE consoles
+        Console con = System.console();
+        String shown = "  " + c(CYAN, "›") + " " + c(BOLD, label) + c(DIM, " (hidden)") + ": ";
+        if (con != null) return con.readPassword("%s", shown);       // CWE-549: password is masked while typing
+        System.out.print("  > " + label + ": ");                    // fallback for IDE consoles
         if (!in.hasNextLine()) System.exit(0);
         return in.nextLine().toCharArray();
     }
 
     static void pause(String msg) {
         if (!msg.isEmpty()) System.out.println("  " + msg);
-        System.out.print("  (press Enter)");
+        System.out.print(c(DIM, "  Press Enter to continue…"));
         if (in.hasNextLine()) in.nextLine();
     }
+
+    static void ok(String msg)  { pause(c(GREEN, "✓ " + msg)); }
+    static void err(String msg) { pause(c(RED, "✗ " + msg)); }
+    static void warn(String msg) { pause(c(YELLOW, "! " + msg)); }
 
     static String b64(byte[] b) { return Base64.getEncoder().encodeToString(b); }
 }

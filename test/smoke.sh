@@ -29,7 +29,7 @@ check "note saved encrypted"                       "$out" "Note saved and encryp
 check "note decrypts for owner"                    "$out" "my hidden text"
 check "path traversal blocked (CWE-22)"            "$out" "Invalid title."
 check "oversized note rejected (CWE-400)"          "$out" "Note too long."
-check "non-admin denied audit log (CWE-862)"       "$out" "Access denied."
+check "non-admin denied audit log (CWE-842)"       "$out" "Access denied."
 check "audit log option hidden for user"           "$out" "View audit log" absent
 
 disk=$(cat vault/notes/bob/secret1.note)
@@ -40,7 +40,7 @@ out=$(run 1 bob x "" 1 bob x "" 1 bob x "" 1 bob "" 3)
 check "lockout after 3 failures (CWE-307)"         "$out" "Too many failed attempts"
 
 out=$(run 1 alice "$ADMIN_PW" 5 "" 4 3)
-check "admin can view audit log"                   "$out" "AUDIT LOG"
+check "admin can view audit log"                   "$out" "Audit log"
 
 log=$(cat vault/audit.log)
 check "audit log has no passwords (CWE-532)"       "$log" "$USER_PW" absent
